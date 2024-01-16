@@ -19,6 +19,22 @@ const app = express()
 const port = 3000
 app.use(express.json())
 
+function validateAndFormatPhoneNumber(phoneNumber) {
+  const startsWith6 = phoneNumber.startsWith("6")
+
+  const endsWithCus = phoneNumber.endsWith("@c.us")
+
+  if (!startsWith6) {
+    phoneNumber = "6" + phoneNumber
+  }
+
+  if (!endsWithCus) {
+    phoneNumber += "@c.us"
+  }
+
+  return phoneNumber
+}
+
 client.on("qr", (qr) => {
   qrcode.generate(qr, { small: true })
 })
@@ -139,46 +155,89 @@ app.post("/login", async (req, res) => {
   res.json({ token, clientId: users.clientId })
 })
 
-app.post("/submit", authenticate, upload.single("img"), (req, res) => {
-  let promises = []
+app.post("/submit", authenticate, upload.single("img"), async (req, res) => {
+  try {
+    const { category, msg, contact_num, clientId } = req.body
+    const file = req.file
 
-  const { category, msg, contact_num, clientId } = req.body
-  const file = req.file
-
-  if (req.user.clientId !== clientId) {
-    return res.status(401).json({ error: "Unauthorized - Invalid clientId" })
-  }
-
-  const media = new MessageMedia(
-    file.mimetype,
-    file.buffer.toString("base64"),
-    file.originalname
-  )
-  if (category.toUpperCase() == "E-INVOICE") {
-    if (msg == "" || file == null) {
+    if (!file) {
       return res
         .status(500)
-        .json({ status: "error", message: "Missing required parameters" })
-    } else {
-      promises.push(client.sendMessage(contact_num, media, { caption: msg }))
+        .json({ status: "error", message: "Missing file parameter" })
     }
-  } else if (category.toUpperCase() == "OTP") {
-    promises.push(client.sendMessage(contact_num, message))
-  } else if (category.toUpperCase() == "REWARDING") {
-    if (msg == "" || file == null) {
-      return res
-        .status(500)
-        .json({ status: "error", message: "Missing required parameters" })
-    } else {
-      promises.push(client.sendMessage(contact_num, media, { caption: msg }))
-    }
-  }
 
-  Promise.all(promises)
-    .then((response) => {
-      res.status(200).send({ success: true, responses: response })
-    })
-    .catch((error) => {
-      res.status(500).send({ success: false, error: error })
-    })
+    if (req.user.clientId !== clientId) {
+      return res.status(401).json({ error: "Unauthorized - Invalid clientId" })
+    }
+
+    const media = new MessageMedia(
+      file.mimetype,
+      file.buffer.toString("base64"),
+      file.originalname
+    )
+
+    // Upload file to Supabase Storage
+    const { data: fileData, error: storageError } = await supabase.storage
+      .from("files")
+      .upload(`${file.originalname}`, file.buffer, {
+        contentType: file.mimetype,
+      })
+
+    if (storageError) {
+      throw new Error(storageError.message)
+    }
+
+    let dataToStore = {
+      category,
+      msg,
+      contact_num,
+      clientId,
+      img: file.originalname,
+    }
+
+    const { data, error } = await supabase.from("data").upsert([dataToStore])
+
+    if (error) {
+      throw new Error(error.message)
+    }
+
+    let promises = []
+    const updated_contact_num = validateAndFormatPhoneNumber(contact_num)
+
+    if (category.toUpperCase() == "E-INVOICE") {
+      if (msg == "" || file == null) {
+        return res
+          .status(500)
+          .json({ status: "error", message: "Missing required parameters" })
+      } else {
+        promises.push(
+          client.sendMessage(updated_contact_num, media, { caption: msg })
+        )
+      }
+    } else if (category.toUpperCase() == "OTP") {
+      promises.push(client.sendMessage(updated_contact_num, message))
+    } else if (category.toUpperCase() == "REWARDING") {
+      if (msg == "" || file == null) {
+        return res
+          .status(500)
+          .json({ status: "error", message: "Missing required parameters" })
+      } else {
+        promises.push(
+          client.sendMessage(updated_contact_num, media, { caption: msg })
+        )
+      }
+    }
+
+    Promise.all(promises)
+      .then((response) => {
+        res
+          .status(200)
+          .send({ success: true, responses: response, storedData: data })
+      })
+      .catch((error) => {
+        res.status(500).send({ success: false, error: error })
+      })
+  } catch (error) {
+    res.status(500).send({ success: false, error: error.message })
+  }
 })
