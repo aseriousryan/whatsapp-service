@@ -136,14 +136,19 @@ app.post("/login", async (req, res) => {
 
   console.log("Generated Token:", token)
 
-  res.json({ token })
+  res.json({ token, clientId: users.clientId })
 })
 
 app.post("/submit", authenticate, upload.single("img"), (req, res) => {
   let promises = []
 
-  const { category, msg, contact_num } = req.body
+  const { category, msg, contact_num, clientId } = req.body
   const file = req.file
+
+  if (req.user.clientId !== clientId) {
+    return res.status(401).json({ error: "Unauthorized - Invalid clientId" })
+  }
+
   const media = new MessageMedia(
     file.mimetype,
     file.buffer.toString("base64"),
