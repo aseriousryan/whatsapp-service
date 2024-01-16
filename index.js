@@ -50,51 +50,105 @@ app.listen(port, () => {
   console.log(`API is running at http://localhost:${port}`)
 })
 
+app.post("/register", async (req, res) => {
+  const { clientId, password, confirmPassword } = req.body
+
+  if (password !== confirmPassword) {
+    return res.status(400).json({ error: "Passwords do not match" })
+  }
+
+  try {
+    const { data: existingUser, error: userError } = await supabase
+      .from("users")
+      .select("clientId")
+      .eq("clientId", clientId)
+      .single()
+
+    if (existingUser) {
+      return res.status(400).json({ error: "User already exists" })
+    }
+
+    // Perform upsert without returning data
+    const { error: insertError } = await supabase
+      .from("users")
+      .upsert([{ clientId, password }], {
+        onConflict: ["clientId"],
+      })
+
+    if (insertError) {
+      console.error("Supabase Insert Error:", insertError)
+      return res.status(500).json({ error: "Failed to register user" })
+    }
+
+    // Retrieve the newly inserted user
+    const { data: newUser, error: selectError } = await supabase
+      .from("users")
+      .select("*")
+      .eq("clientId", clientId)
+      .single()
+
+    if (selectError || !newUser) {
+      console.error("Supabase Select Error:", selectError)
+      return res.status(500).json({ error: "Failed to fetch registered user" })
+    }
+
+    console.log("New User Registered:", newUser)
+
+    res.status(201).json({
+      success: true,
+      message: "User registered successfully",
+      user: newUser,
+    })
+  } catch (error) {
+    console.error("Registration Error:", error)
+    res.status(500).json({ error: "Internal server error" })
+  }
+})
+
 app.post("/login", async (req, res) => {
   const { clientId, password } = req.body
 
-  // Fetch user from Supabase
   const { data: users, error } = await supabase
     .from("users")
     .select("clientId, password")
     .eq("clientId", clientId)
     .single()
 
-  // Log the Supabase query response
   console.log("Supabase Query Response:", { users, error })
 
   if (error || !users) {
     return res.status(401).json({ error: "Invalid credentials" })
   }
 
-  // Check the password without hashing for testing
   const isPasswordValid = password === users.password
 
-  // Log the password comparison result
   console.log("Password Comparison Result:", isPasswordValid)
 
   if (!isPasswordValid) {
     return res.status(401).json({ error: "Invalid credentials" })
   }
 
-  // Generate JWT token
   const token = jwt.sign(
     { clientId: users.clientId, role: "user" },
     "Dqg8vBIGkJ",
     { expiresIn: "1h" }
   )
 
-  // Log the generated token
   console.log("Generated Token:", token)
 
-  res.json({ token })
+  res.json({ token, clientId: users.clientId })
 })
 
 app.post("/submit", authenticate, upload.single("img"), (req, res) => {
   let promises = []
 
-  const { category, msg, contact_num } = req.body
+  const { category, msg, contact_num, clientId } = req.body
   const file = req.file
+
+  if (req.user.clientId !== clientId) {
+    return res.status(401).json({ error: "Unauthorized - Invalid clientId" })
+  }
+
   const media = new MessageMedia(
     file.mimetype,
     file.buffer.toString("base64"),
