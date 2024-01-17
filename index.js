@@ -157,13 +157,26 @@ app.post("/login", async (req, res) => {
 
 app.post("/submit", authenticate, upload.single("img"), async (req, res) => {
   try {
-    const { category, msg, contact_num, clientId } = req.body
+    const { contact_num, clientId } = req.body
     const file = req.file
 
+    const missingParameters = []
+
     if (!file) {
-      return res
-        .status(500)
-        .json({ status: "error", message: "Missing file parameter" })
+      missingParameters.push("img")
+    }
+    if (!contact_num) {
+      missingParameters.push("contact_num")
+    }
+    if (!clientId) {
+      missingParameters.push("clientId")
+    }
+
+    if (missingParameters.length > 0) {
+      return res.status(400).json({
+        status: "error",
+        message: `Missing required parameters: ${missingParameters.join(", ")}`,
+      })
     }
 
     if (req.user.clientId !== clientId) {
@@ -187,12 +200,19 @@ app.post("/submit", authenticate, upload.single("img"), async (req, res) => {
       throw new Error(storageError.message)
     }
 
-    let dataToStore = {
-      category,
-      msg,
+    const updated_contact_num = validateAndFormatPhoneNumber(contact_num)
+
+    // Adjust data to include the hardcoded category "E-INVOICE"
+    const dataToStore = {
+      category: "E-INVOICE",
       contact_num,
       clientId,
       img: file.originalname,
+    }
+
+    // Add optional msg parameter as a caption if provided
+    if (req.body.msg) {
+      dataToStore.msg = req.body.msg
     }
 
     const { data, error } = await supabase.from("data").upsert([dataToStore])
@@ -201,38 +221,19 @@ app.post("/submit", authenticate, upload.single("img"), async (req, res) => {
       throw new Error(error.message)
     }
 
-    let promises = []
-    const updated_contact_num = validateAndFormatPhoneNumber(contact_num)
+    const caption = req.body.msg || null
 
-    if (category.toUpperCase() == "E-INVOICE") {
-      if (msg == "" || file == null) {
-        return res
-          .status(500)
-          .json({ status: "error", message: "Missing required parameters" })
-      } else {
-        promises.push(
-          client.sendMessage(updated_contact_num, media, { caption: msg })
-        )
-      }
-    } else if (category.toUpperCase() == "OTP") {
-      promises.push(client.sendMessage(updated_contact_num, message))
-    } else if (category.toUpperCase() == "REWARDING") {
-      if (msg == "" || file == null) {
-        return res
-          .status(500)
-          .json({ status: "error", message: "Missing required parameters" })
-      } else {
-        promises.push(
-          client.sendMessage(updated_contact_num, media, { caption: msg })
-        )
-      }
-    }
+    const promises = [
+      client.sendMessage(updated_contact_num, media, { caption }),
+    ]
 
     Promise.all(promises)
       .then((response) => {
-        res
-          .status(200)
-          .send({ success: true, responses: response, storedData: data })
+        res.status(200).send({
+          success: true,
+          responses: response,
+          storedData: data,
+        })
       })
       .catch((error) => {
         res.status(500).send({ success: false, error: error })
