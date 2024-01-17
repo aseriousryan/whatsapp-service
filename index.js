@@ -189,10 +189,14 @@ app.post("/submit", authenticate, upload.single("img"), async (req, res) => {
       file.originalname
     )
 
+    // Generate a unique file name by appending a timestamp
+    const timestamp = new Date().getTime()
+    const uniqueFileName = `${timestamp}_${file.originalname}`
+
     // Upload file to Supabase Storage
     const { data: fileData, error: storageError } = await supabase.storage
       .from("files")
-      .upload(`${file.originalname}`, file.buffer, {
+      .upload(uniqueFileName, file.buffer, {
         contentType: file.mimetype,
       })
 
@@ -207,7 +211,7 @@ app.post("/submit", authenticate, upload.single("img"), async (req, res) => {
       category: "E-INVOICE",
       contact_num,
       clientId,
-      img: file.originalname,
+      img: uniqueFileName, // Use the unique file name
     }
 
     // Add optional msg parameter as a caption if provided
