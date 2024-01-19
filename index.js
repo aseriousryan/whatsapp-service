@@ -3,9 +3,9 @@ const { Client, LocalAuth, MessageMedia } = require("whatsapp-web.js")
 const multer = require("multer")
 const { createClient } = require("@supabase/supabase-js")
 const jwt = require("jsonwebtoken")
-const supabaseUrl = "https://njsnrwfrlgplnlrbvvxd.supabase.co"
+const supabaseUrl = "http://195.35.7.235:8000"
 const supabaseKey =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5qc25yd2ZybGdwbG5scmJ2dnhkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDUzMTEzNzcsImV4cCI6MjAyMDg4NzM3N30.mz1I5rGz7-kmuGKD98RVyvmBEdCrWFEVnUgjVdMzFt8"
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.ewogICJyb2xlIjogImFub24iLAogICJpc3MiOiAic3VwYWJhc2UiLAogICJpYXQiOiAxNzA1NTkzNjAwLAogICJleHAiOiAxODYzNDQ2NDAwCn0.IOdYznc_Hy78vBQtJOAqObVhhCQOWF2t70K8Gkd3si4"
 const supabase = createClient(supabaseUrl, supabaseKey)
 
 const client = new Client({
@@ -163,7 +163,6 @@ app.post("/login", async (req, res) => {
 
   res.json({ token, clientId: users.clientId })
 })
-
 app.post("/submit", authenticate, upload.single("img"), async (req, res) => {
   try {
     const { contact_num, clientId } = req.body
