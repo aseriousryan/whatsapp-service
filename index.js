@@ -45,7 +45,6 @@ client.on("ready", () => {
 
 client.initialize()
 
-// Middleware for JWT token verification
 const authenticate = (req, res, next) => {
   const token = req.headers.authorization
 
@@ -68,7 +67,19 @@ app.listen(port, () => {
 
 app.post("/register", async (req, res) => {
   const { clientId, password, confirmPassword } = req.body
-
+  if (!clientId || clientId == null) {
+    return res.status(400).json({ error: "clientId is required" })
+  }
+  if (
+    !password ||
+    password == null ||
+    !confirmPassword ||
+    confirmPassword == null
+  ) {
+    return res
+      .status(400)
+      .json({ error: "password and confirmPassword is required" })
+  }
   if (password !== confirmPassword) {
     return res.status(400).json({ error: "Passwords do not match" })
   }
@@ -84,7 +95,6 @@ app.post("/register", async (req, res) => {
       return res.status(400).json({ error: "User already exists" })
     }
 
-    // Perform upsert without returning data
     const { error: insertError } = await supabase
       .from("users")
       .upsert([{ clientId, password }], {
@@ -96,7 +106,6 @@ app.post("/register", async (req, res) => {
       return res.status(500).json({ error: "Failed to register user" })
     }
 
-    // Retrieve the newly inserted user
     const { data: newUser, error: selectError } = await supabase
       .from("users")
       .select("*")
@@ -189,11 +198,9 @@ app.post("/submit", authenticate, upload.single("img"), async (req, res) => {
       file.originalname
     )
 
-    // Generate a unique file name by appending a timestamp
     const timestamp = new Date().getTime()
     const uniqueFileName = `${timestamp}_${file.originalname}`
 
-    // Upload file to Supabase Storage
     const { data: fileData, error: storageError } = await supabase.storage
       .from("files")
       .upload(uniqueFileName, file.buffer, {
@@ -206,15 +213,13 @@ app.post("/submit", authenticate, upload.single("img"), async (req, res) => {
 
     const updated_contact_num = validateAndFormatPhoneNumber(contact_num)
 
-    // Adjust data to include the hardcoded category "E-INVOICE"
     const dataToStore = {
       category: "E-INVOICE",
       contact_num,
       clientId,
-      img: uniqueFileName, // Use the unique file name
+      img: uniqueFileName,
     }
 
-    // Add optional msg parameter as a caption if provided
     if (req.body.msg) {
       dataToStore.msg = req.body.msg
     }
