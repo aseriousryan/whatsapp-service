@@ -3,6 +3,7 @@ const { Client, LocalAuth, MessageMedia } = require("whatsapp-web.js")
 const multer = require("multer")
 const { createClient } = require("@supabase/supabase-js")
 const jwt = require("jsonwebtoken")
+const bcrypt = require("bcrypt")
 const supabaseUrl = "http://195.35.7.235:8000"
 const supabaseKey =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.ewogICJyb2xlIjogImFub24iLAogICJpc3MiOiAic3VwYWJhc2UiLAogICJpYXQiOiAxNzA1NTkzNjAwLAogICJleHAiOiAxODYzNDQ2NDAwCn0.IOdYznc_Hy78vBQtJOAqObVhhCQOWF2t70K8Gkd3si4"
@@ -62,14 +63,18 @@ const authenticate = (req, res, next) => {
 }
 
 app.listen(port, () => {
-  console.log(`API is running at http://localhost:${port}`)
+  console.log(
+    `API is running at http://195.35.7.235:${port}, wait until client is ready message is shown before sending requests.`
+  )
 })
 
 app.post("/register", async (req, res) => {
   const { clientId, password, confirmPassword } = req.body
+
   if (!clientId || clientId == null) {
     return res.status(400).json({ error: "clientId is required" })
   }
+
   if (
     !password ||
     password == null ||
@@ -80,11 +85,16 @@ app.post("/register", async (req, res) => {
       .status(400)
       .json({ error: "password and confirmPassword is required" })
   }
+
   if (password !== confirmPassword) {
     return res.status(400).json({ error: "Passwords do not match" })
   }
 
   try {
+    const hashedPassword = await bcrypt.hash(password, 10)
+    // console.log("Hashed Password:", hashedPassword);
+
+    // Check if user already exists
     const { data: existingUser, error: userError } = await supabase
       .from("users")
       .select("clientId")
@@ -95,9 +105,10 @@ app.post("/register", async (req, res) => {
       return res.status(400).json({ error: "User already exists" })
     }
 
+    // Insert a new user with hashed password
     const { error: insertError } = await supabase
       .from("users")
-      .upsert([{ clientId, password }], {
+      .upsert([{ clientId, password: hashedPassword }], {
         onConflict: ["clientId"],
       })
 
@@ -106,6 +117,7 @@ app.post("/register", async (req, res) => {
       return res.status(500).json({ error: "Failed to register user" })
     }
 
+    // Fetch the registered user data
     const { data: newUser, error: selectError } = await supabase
       .from("users")
       .select("*")
@@ -117,7 +129,7 @@ app.post("/register", async (req, res) => {
       return res.status(500).json({ error: "Failed to fetch registered user" })
     }
 
-    console.log("New User Registered:", newUser)
+    //console.log("New User Registered:", newUser);
 
     res.status(201).json({
       success: true,
@@ -139,15 +151,15 @@ app.post("/login", async (req, res) => {
     .eq("clientId", clientId)
     .single()
 
-  console.log("Supabase Query Response:", { users, error })
+  //console.log("Supabase Query Response:", { users, error })
 
   if (error || !users) {
     return res.status(401).json({ error: "Invalid credentials" })
   }
 
-  const isPasswordValid = password === users.password
+  const isPasswordValid = await bcrypt.compare(password, users.password)
 
-  console.log("Password Comparison Result:", isPasswordValid)
+  //console.log("Password Comparison Result:", isPasswordValid)
 
   if (!isPasswordValid) {
     return res.status(401).json({ error: "Invalid credentials" })
