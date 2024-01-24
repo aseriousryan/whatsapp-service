@@ -9,6 +9,9 @@
     "npm": "^10.2.5",
     "puppeteer": "^21.6.1",
     "qrcode-terminal": "^0.12.0",
+    "swagger-jsdoc": "^6.0.0",
+    "swagger-ui-dist": "^5.11.0",
+    "swagger-ui-express": "^5.0.0",
     "whatsapp-web.js": "^1.23.0"
   }
 }
