@@ -1,9 +1,41 @@
 const qrcode = require("qrcode-terminal")
+const express = require("express")
+const app = express()
 const { Client, LocalAuth, MessageMedia } = require("whatsapp-web.js")
 const multer = require("multer")
 const { createClient } = require("@supabase/supabase-js")
 const jwt = require("jsonwebtoken")
 const bcrypt = require("bcrypt")
+
+const swaggerJSDoc = require("swagger-jsdoc")
+const swaggerUi = require("swagger-ui-express")
+const options = {
+  definition: {
+    openapi: "3.0.0",
+    info: {
+      title: "Smart Whatsapp Service",
+      version: "1.1.0",
+    },
+    servers: [
+      {
+        url: "http://localhost:3000/",
+      },
+    ],
+    components: {
+      securitySchemes: {
+        BearerAuth: {
+          type: "apiKey",
+          in: "header",
+          name: "Authorization",
+        },
+      },
+    },
+  },
+  apis: ["./index.js"],
+}
+
+const swaggerSpec = swaggerJSDoc(options)
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec))
 const supabaseUrl = "http://195.35.7.235:8000"
 const supabaseKey =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.ewogICJyb2xlIjogImFub24iLAogICJpc3MiOiAic3VwYWJhc2UiLAogICJpYXQiOiAxNzA1NTkzNjAwLAogICJleHAiOiAxODYzNDQ2NDAwCn0.IOdYznc_Hy78vBQtJOAqObVhhCQOWF2t70K8Gkd3si4"
@@ -15,8 +47,7 @@ const client = new Client({
 })
 
 const upload = multer()
-const express = require("express")
-const app = express()
+
 const port = 3000
 app.use(express.json())
 
@@ -68,6 +99,37 @@ app.listen(port, () => {
   )
 })
 
+/**
+ * @swagger
+ * /register:
+ *   post:
+ *     summary: This API is used to register a user.
+ *     description: This API is used to register a user.
+ *     requestBody:
+ *       description: User registration data.
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               clientId:
+ *                 type: string
+ *                 description: The client ID for registration.
+ *               password:
+ *                 type: string
+ *                 description: The password for registration.
+ *               confirmPassword:
+ *                 type: string
+ *                 description: The confirmed password for registration.
+ *     responses:
+ *       200:
+ *         description: User registered successfully.
+ *       400:
+ *         description: Bad request.
+ *       500:
+ *         description: Internal server error.
+ */
 app.post("/register", async (req, res) => {
   const { clientId, password, confirmPassword } = req.body
 
@@ -142,6 +204,34 @@ app.post("/register", async (req, res) => {
   }
 })
 
+/**
+ * @swagger
+ * /login:
+ *   post:
+ *     summary: This API is used to log a user in.
+ *     description: This API is used to log a user in.
+ *     requestBody:
+ *       description: User login data.
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               clientId:
+ *                 type: string
+ *                 description: The client ID for login.
+ *               password:
+ *                 type: string
+ *                 description: The password for login.
+ *     responses:
+ *       200:
+ *         description: User logged in successfully.
+ *       400:
+ *         description: Bad request.
+ *       500:
+ *         description: Internal server error.
+ */
 app.post("/login", async (req, res) => {
   const { clientId, password } = req.body
 
@@ -175,6 +265,46 @@ app.post("/login", async (req, res) => {
 
   res.json({ token, clientId: users.clientId })
 })
+
+/**
+ * @swagger
+ * /submit:
+ *   post:
+ *     security:
+ *     - BearerAuth: []
+ *     summary: Submit image and message to a contact
+ *     description: Submit image and message to a contact
+ *     requestBody:
+ *       description: Data to be submitted, including an image.
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               contact_num:
+ *                 type: string
+ *                 description: The contact number for the message to be sent to.
+ *               clientId:
+ *                 type: string
+ *                 description: The client ID.
+ *               img:
+ *                 type: string
+ *                 format: binary
+ *                 description: The image/document file to be uploaded.
+ *               msg:
+ *                 type: string
+ *                 description: An optional message.
+ *     responses:
+ *       200:
+ *         description: Data submitted successfully.
+ *       400:
+ *         description: Bad request.
+ *       401:
+ *         description: Unauthorized.
+ *       500:
+ *         description: Internal server error.
+ */
 app.post("/submit", authenticate, upload.single("img"), async (req, res) => {
   try {
     const { contact_num, clientId } = req.body
