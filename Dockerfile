@@ -57,6 +57,15 @@ RUN npm install
 # Copy the rest of the application code to the working directory
 COPY . .
 
+# Add a user for Puppeteer
+RUN groupadd -r pptruser && useradd -r -g pptruser -G audio,video pptruser \
+    && mkdir -p /home/pptruser/Downloads \
+    && chown -R pptruser:pptruser /home/pptruser \
+    && chown -R pptruser:pptruser /app
+
+# Use the new user
+USER pptruser
+
 # Expose the port that your application is running on (if applicable)
 EXPOSE 3000
 
