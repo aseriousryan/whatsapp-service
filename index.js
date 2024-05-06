@@ -34,6 +34,17 @@ const options = {
   apis: ["./index.js"],
 }
 
+function getErrorDetails(error) {
+  if (typeof error === "string") {
+    return { message: error }
+  }
+  return {
+    message: error.message,
+    stack: error.stack,
+    ...error,
+  }
+}
+
 const swaggerSpec = swaggerJSDoc(options)
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec))
 const supabaseUrl = "http://195.35.7.235:8000"
@@ -43,7 +54,11 @@ const supabase = createClient(supabaseUrl, supabaseKey)
 
 const client = new Client({
   authStrategy: new LocalAuth(),
-  puppeteer: { args: ["--no-sandbox"] },
+  webVersionCache: {
+    type: "remote",
+    remotePath:
+      "https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html",
+  },
 })
 
 const upload = multer()
@@ -305,11 +320,13 @@ app.post("/login", async (req, res) => {
  *       500:
  *         description: Internal server error.
  */
+
 app.post("/submit", authenticate, upload.single("img"), async (req, res) => {
+  console.log("Received body: ", req.body)
+  console.log("Received file: ", req.file)
   try {
     const { contact_num, clientId } = req.body
     const file = req.file
-
     const missingParameters = []
 
     if (!file) {
@@ -349,6 +366,7 @@ app.post("/submit", authenticate, upload.single("img"), async (req, res) => {
       })
 
     if (storageError) {
+      console.error("Supabase Storage Error:", storageError.message)
       throw new Error(storageError.message)
     }
 
@@ -368,6 +386,7 @@ app.post("/submit", authenticate, upload.single("img"), async (req, res) => {
     const { data, error } = await supabase.from("data").upsert([dataToStore])
 
     if (error) {
+      console.error("Supabase Upsert Error:", error.message)
       throw new Error(error.message)
     }
 
@@ -386,9 +405,23 @@ app.post("/submit", authenticate, upload.single("img"), async (req, res) => {
         })
       })
       .catch((error) => {
-        res.status(500).send({ success: false, error: error })
+        console.error("Promise Error: ", error)
+        res.status(500).json({
+          success: false,
+          error: {
+            message: error.message || "Unknown error",
+            stack: error.stack || "No stack trace",
+          },
+        })
       })
   } catch (error) {
-    res.status(500).send({ success: false, error: error.message })
+    console.error("Catch Error: ", error)
+    res.status(500).json({
+      success: false,
+      error: {
+        message: error.message || "Unknown error",
+        stack: error.stack || "No stack trace",
+      },
+    })
   }
 })
