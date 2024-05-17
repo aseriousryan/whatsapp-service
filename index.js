@@ -86,25 +86,33 @@ function validateAndFormatPhoneNumber(phoneNumber) {
 }
 
 client.on("qr", (qr) => {
-  qrcode.generate(qr, { small: true })
+  try {
+    qrcode.generate(qr, { small: true })
+  } catch (error) {
+    console.error("QR Code Generation Error:", error)
+  }
 })
 
 client.on("ready", () => {
   console.log("Client is ready!")
 })
 
-client.initialize()
+try {
+  client.initialize()
+} catch (error) {
+  console.error("WhatsApp Client Initialization Error:", error)
+}
 
 const authenticate = (req, res, next) => {
   const token = req.headers.authorization
 
   if (!token) {
-    return res.status(401).json({ error: "Unauthorized - Token missing" })
+    return res.status(452).json({ error: "Unauthorized - Token missing" })
   }
 
   jwt.verify(token, "Dqg8vBIGkJ", (err, user) => {
     if (err) {
-      return res.status(401).json({ error: "Unauthorized - Invalid token" })
+      return res.status(452).json({ error: "Unauthorized - Invalid token" })
     }
     req.user = user
     next()
@@ -143,16 +151,16 @@ app.listen(port, () => {
  *     responses:
  *       200:
  *         description: User registered successfully.
- *       400:
+ *       454:
  *         description: Bad request.
- *       500:
+ *       456:
  *         description: Internal server error.
  */
 app.post("/register", async (req, res) => {
   const { clientId, password, confirmPassword } = req.body
 
   if (!clientId || clientId == null) {
-    return res.status(400).json({ error: "clientId is required" })
+    return res.status(454).json({ error: "clientId is required" })
   }
 
   if (
@@ -162,19 +170,17 @@ app.post("/register", async (req, res) => {
     confirmPassword == null
   ) {
     return res
-      .status(400)
+      .status(454)
       .json({ error: "password and confirmPassword is required" })
   }
 
   if (password !== confirmPassword) {
-    return res.status(400).json({ error: "Passwords do not match" })
+    return res.status(454).json({ error: "Passwords do not match" })
   }
 
   try {
     const hashedPassword = await bcrypt.hash(password, 10)
-    // console.log("Hashed Password:", hashedPassword);
 
-    // Check if user already exists
     const { data: existingUser, error: userError } = await supabase
       .from("users")
       .select("clientId")
@@ -182,7 +188,7 @@ app.post("/register", async (req, res) => {
       .single()
 
     if (existingUser) {
-      return res.status(400).json({ error: "User already exists" })
+      return res.status(454).json({ error: "User already exists" })
     }
 
     // Insert a new user with hashed password
@@ -193,8 +199,8 @@ app.post("/register", async (req, res) => {
       })
 
     if (insertError) {
-      console.error("Supabase Insert Error:", insertError)
-      return res.status(500).json({ error: "Failed to register user" })
+      console.error("Insert Error:", insertError)
+      return res.status(456).json({ error: "Failed to register user" })
     }
 
     // Fetch the registered user data
@@ -206,19 +212,19 @@ app.post("/register", async (req, res) => {
 
     if (selectError || !newUser) {
       console.error("Supabase Select Error:", selectError)
-      return res.status(500).json({ error: "Failed to fetch registered user" })
+      return res.status(456).json({ error: "Failed to fetch registered user" })
     }
 
     //console.log("New User Registered:", newUser);
 
-    res.status(201).json({
+    res.status(200).json({
       success: true,
       message: "User registered successfully",
       user: newUser,
     })
   } catch (error) {
     console.error("Registration Error:", error)
-    res.status(500).json({ error: "Internal server error" })
+    res.status(456).json({ error: "Internal server error" })
   }
 })
 
@@ -245,43 +251,49 @@ app.post("/register", async (req, res) => {
  *     responses:
  *       200:
  *         description: User logged in successfully.
- *       400:
+ *       454:
  *         description: Bad request.
- *       500:
+ *       452:
+ *         description: Unauthorized.
+ *       456:
  *         description: Internal server error.
  */
 app.post("/login", async (req, res) => {
   const { clientId, password } = req.body
 
-  const { data: users, error } = await supabase
-    .from("users")
-    .select("clientId, password")
-    .eq("clientId", clientId)
-    .single()
+  try {
+    const { data: users, error } = await supabase
+      .from("users")
+      .select("clientId, password")
+      .eq("clientId", clientId)
+      .single()
 
-  //console.log("Supabase Query Response:", { users, error })
+    if (error || !users) {
+      return res.status(452).json({ error: "Invalid credentials" })
+    }
 
-  if (error || !users) {
-    return res.status(401).json({ error: "Invalid credentials" })
+    const isPasswordValid = await bcrypt.compare(password, users.password)
+
+    if (!isPasswordValid) {
+      return res.status(452).json({ error: "Invalid credentials" })
+    }
+
+    try {
+      const token = jwt.sign(
+        { clientId: users.clientId, role: "user" },
+        "Dqg8vBIGkJ",
+        { expiresIn: "1h" }
+      )
+
+      res.json({ token, clientId: users.clientId })
+    } catch (error) {
+      console.error("JWT Token Generation Error:", error)
+      res.status(456).json({ error: "Error generating JWT token" })
+    }
+  } catch (error) {
+    console.error("Login Error:", error)
+    res.status(456).json({ error: "Internal server error" })
   }
-
-  const isPasswordValid = await bcrypt.compare(password, users.password)
-
-  //console.log("Password Comparison Result:", isPasswordValid)
-
-  if (!isPasswordValid) {
-    return res.status(401).json({ error: "Invalid credentials" })
-  }
-
-  const token = jwt.sign(
-    { clientId: users.clientId, role: "user" },
-    "Dqg8vBIGkJ",
-    { expiresIn: "1h" }
-  )
-
-  console.log("Generated Token:", token)
-
-  res.json({ token, clientId: users.clientId })
 })
 
 /**
@@ -316,11 +328,11 @@ app.post("/login", async (req, res) => {
  *     responses:
  *       200:
  *         description: Data submitted successfully.
- *       400:
+ *       454:
  *         description: Bad request.
- *       401:
+ *       452:
  *         description: Unauthorized.
- *       500:
+ *       456:
  *         description: Internal server error.
  */
 
@@ -343,14 +355,14 @@ app.post("/submit", authenticate, upload.single("img"), async (req, res) => {
     }
 
     if (missingParameters.length > 0) {
-      return res.status(400).json({
+      return res.status(454).json({
         status: "error",
         message: `Missing required parameters: ${missingParameters.join(", ")}`,
       })
     }
 
     if (req.user.clientId !== clientId) {
-      return res.status(401).json({ error: "Unauthorized - Invalid clientId" })
+      return res.status(452).json({ error: "Unauthorized - Invalid clientId" })
     }
 
     const media = new MessageMedia(
@@ -362,15 +374,20 @@ app.post("/submit", authenticate, upload.single("img"), async (req, res) => {
     const timestamp = new Date().getTime()
     const uniqueFileName = `${timestamp}_${file.originalname}`
 
-    const { data: fileData, error: storageError } = await supabase.storage
-      .from("files")
-      .upload(uniqueFileName, file.buffer, {
-        contentType: file.mimetype,
-      })
+    try {
+      const { data: fileData, error: storageError } = await supabase.storage
+        .from("files")
+        .upload(uniqueFileName, file.buffer, {
+          contentType: file.mimetype,
+        })
 
-    if (storageError) {
-      console.error("Supabase Storage Error:", storageError.message)
-      throw new Error(storageError.message)
+      if (storageError) {
+        console.error("Storage Error:", storageError.message)
+        throw new Error(storageError.message)
+      }
+    } catch (error) {
+      console.error("File Upload Error:", error)
+      return res.status(456).json({ error: "Error uploading file to Storage" })
     }
 
     const updated_contact_num = validateAndFormatPhoneNumber(contact_num)
@@ -386,11 +403,20 @@ app.post("/submit", authenticate, upload.single("img"), async (req, res) => {
       dataToStore.msg = req.body.msg
     }
 
-    const { data, error } = await supabase.from("data").upsert([dataToStore])
+    let data
+    try {
+      const { data: upsertData, error } = await supabase
+        .from("data")
+        .upsert([dataToStore])
 
-    if (error) {
-      console.error("Supabase Upsert Error:", error.message)
-      throw new Error(error.message)
+      if (error) {
+        console.error("Upsert Error:", error.message)
+        throw new Error(error.message)
+      }
+      data = upsertData
+    } catch (error) {
+      console.error("Database Upsert Error:", error)
+      return res.status(456).json({ error: "Error upserting data to database" })
     }
 
     const caption = req.body.msg || null
@@ -409,17 +435,28 @@ app.post("/submit", authenticate, upload.single("img"), async (req, res) => {
       })
       .catch((error) => {
         console.error("Promise Error: ", error)
-        res.status(500).json({
-          success: false,
-          error: {
-            message: error.message || "Unknown error",
-            stack: error.stack || "No stack trace",
-          },
-        })
+        // Check for specific error related to client initialization
+        if (error.message.includes("Cannot read properties of undefined")) {
+          res.status(456).json({
+            success: false,
+            error: {
+              message: "Client not initialized",
+              stack: error.stack || "No stack trace",
+            },
+          })
+        } else {
+          res.status(456).json({
+            success: false,
+            error: {
+              message: error.message || "Unknown error",
+              stack: error.stack || "No stack trace",
+            },
+          })
+        }
       })
   } catch (error) {
     console.error("Catch Error: ", error)
-    res.status(500).json({
+    res.status(456).json({
       success: false,
       error: {
         message: error.message || "Unknown error",
