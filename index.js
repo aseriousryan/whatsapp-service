@@ -18,7 +18,7 @@ const options = {
     },
     servers: [
       {
-        url: "http://195.35.7.235:3000/",
+        url: "http://srv465260.hstgr.cloud:3000/",
       },
     ],
     components: {
@@ -121,7 +121,7 @@ const authenticate = (req, res, next) => {
 
 app.listen(port, () => {
   console.log(
-    `API is running at http://195.35.7.235:${port}, wait until client is ready message is shown before sending requests.`
+    `API is running at http://srv465260.hstgr.cloud:${port}, wait until client is ready message is shown before sending requests.`
   )
 })
 
@@ -214,8 +214,6 @@ app.post("/register", async (req, res) => {
       console.error("Supabase Select Error:", selectError)
       return res.status(456).json({ error: "Failed to fetch registered user" })
     }
-
-    //console.log("New User Registered:", newUser);
 
     res.status(200).json({
       success: true,
@@ -337,8 +335,6 @@ app.post("/login", async (req, res) => {
  */
 
 app.post("/submit", authenticate, upload.single("img"), async (req, res) => {
-  console.log("Received body: ", req.body)
-  console.log("Received file: ", req.file)
   try {
     const { contact_num, clientId } = req.body
     const file = req.file
@@ -363,6 +359,23 @@ app.post("/submit", authenticate, upload.single("img"), async (req, res) => {
 
     if (req.user.clientId !== clientId) {
       return res.status(452).json({ error: "Unauthorized - Invalid clientId" })
+    }
+
+    // Fetch user data to check balance
+    const { data: user, error: userError } = await supabase
+      .from("users")
+      .select("usage, total_message")
+      .eq("clientId", clientId)
+      .single()
+
+    if (userError || !user) {
+      return res.status(452).json({ error: "User not found" })
+    }
+
+    const usage = user.usage || 0
+    const balance = user.total_message - usage
+    if (balance <= 0) {
+      return res.status(452).json({ error: "Insufficient balance" })
     }
 
     const media = new MessageMedia(
@@ -426,16 +439,28 @@ app.post("/submit", authenticate, upload.single("img"), async (req, res) => {
     ]
 
     Promise.all(promises)
-      .then((response) => {
+      .then(async (response) => {
+        // Increment usage count
+        const { error: updateError } = await supabase
+          .from("users")
+          .update({ usage: usage + 1 })
+          .eq("clientId", clientId)
+
+        if (updateError) {
+          console.error("Usage Update Error:", updateError.message)
+          return res.status(456).json({ error: "Error updating usage count" })
+        }
+
         res.status(200).send({
           success: true,
+          remainingBalance: balance - 1,
           responses: response,
           storedData: data,
+          // Remaining balance after this request
         })
       })
       .catch((error) => {
         console.error("Promise Error: ", error)
-        // Check for specific error related to client initialization
         if (error.message.includes("Cannot read properties of undefined")) {
           res.status(456).json({
             success: false,
@@ -463,5 +488,137 @@ app.post("/submit", authenticate, upload.single("img"), async (req, res) => {
         stack: error.stack || "No stack trace",
       },
     })
+  }
+})
+
+/**
+ * @swagger
+ * /topup:
+ *   post:
+ *     summary: This API is used to top up the total_message count for a user.
+ *     description: This API is used to top up the total_message count for a user.
+ *     requestBody:
+ *       description: User top-up data.
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               clientId:
+ *                 type: string
+ *                 description: The client ID to top up.
+ *               amount:
+ *                 type: integer
+ *                 description: The amount to top up.
+ *     responses:
+ *       200:
+ *         description: Top-up successful.
+ *       454:
+ *         description: Bad request.
+ *       456:
+ *         description: Internal server error.
+ */
+app.post("/topup", async (req, res) => {
+  const { clientId, amount } = req.body
+
+  if (!clientId || !amount || typeof amount !== "number" || amount <= 0) {
+    return res.status(454).json({ error: "Invalid clientId or amount" })
+  }
+
+  try {
+    const { data: user, error: userError } = await supabase
+      .from("users")
+      .select("total_message, usage")
+      .eq("clientId", clientId)
+      .single()
+
+    if (userError || !user) {
+      return res.status(452).json({ error: "User not found" })
+    }
+
+    const total_message = user.total_message || 0
+    const usage = user.usage || 0
+    const balance_before = total_message - usage
+    const newTotalMessage = total_message + amount
+    const balance_after = newTotalMessage - usage
+
+    const { error: updateError } = await supabase
+      .from("users")
+      .update({ total_message: newTotalMessage })
+      .eq("clientId", clientId)
+
+    if (updateError) {
+      console.error("Top-Up Update Error:", updateError.message)
+      return res.status(456).json({ error: "Error updating total_message" })
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Top-up successful",
+      previous_balance: balance_before,
+      new_balance: balance_after,
+    })
+  } catch (error) {
+    console.error("Top-Up Error:", error)
+    res.status(456).json({ error: "Internal server error" })
+  }
+})
+/**
+ * @swagger
+ * /balance:
+ *   post:
+ *     summary: Check the total messages, usage, and balance for a user.
+ *     description: This API is used to check the total messages, usage, and balance for a user.
+ *     requestBody:
+ *       description: User balance data.
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               clientId:
+ *                 type: string
+ *                 description: The client ID to check balance.
+ *     responses:
+ *       200:
+ *         description: Balance retrieved successfully.
+ *       454:
+ *         description: Bad request.
+ *       456:
+ *         description: Internal server error.
+ */
+app.post("/balance", async (req, res) => {
+  const { clientId } = req.body
+
+  if (!clientId) {
+    return res.status(454).json({ error: "clientId is required" })
+  }
+
+  try {
+    const { data: user, error: userError } = await supabase
+      .from("users")
+      .select("total_message, usage")
+      .eq("clientId", clientId)
+      .single()
+
+    if (userError || !user) {
+      return res.status(452).json({ error: "User not found" })
+    }
+
+    const total_message = user.total_message || 0
+    const usage = user.usage || 0
+    const balance = total_message - usage
+
+    res.status(200).json({
+      clientId,
+      total_message,
+      usage,
+      balance,
+    })
+  } catch (error) {
+    console.error("Balance Check Error:", error)
+    res.status(456).json({ error: "Internal server error" })
   }
 })
