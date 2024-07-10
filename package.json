@@ -12,6 +12,6 @@
     "swagger-jsdoc": "^6.0.0",
     "swagger-ui-dist": "^5.11.0",
     "swagger-ui-express": "^5.0.0",
-    "whatsapp-web.js": "^1.23.0"
+    "whatsapp-web.js": "github:pedroslopez/whatsapp-web.js#webpack-exodus"
   }
 }
