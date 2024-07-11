@@ -1,7 +1,7 @@
 # Use an official Node.js runtime as a base image
 FROM node:20
 
-RUN apt install -y libgbm-dev
+RUN apt-get install -y libgbm-dev
 
 # Set the working directory inside the container
 WORKDIR /app
