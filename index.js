@@ -53,9 +53,11 @@ const supabaseKey =
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 const client = new Client({
-  // puppeteer: {
-  //   args: ["--no-sandbox", "--disable-setuid-sandbox"],
-  // },
+  puppeteer: {
+    haedless: true,
+    // executablePath: "/snap/bin/chromium",
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  },
   authStrategy: new LocalAuth(),
   webVersionCache: {
     type: "remote",
