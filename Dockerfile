@@ -1,7 +1,17 @@
 # Use an official Node.js runtime as a base image
 FROM node:20
 
-RUN apt-get install -y libgbm-dev
+# Set environment variables to avoid interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Update package lists and install dependencies
+RUN apt-get update && \
+    apt-get install -y \
+    software-properties-common && \
+    add-apt-repository universe && \
+    apt-get update && \
+    apt-get install -y \
+    libgbm-dev
 
 # Set the working directory inside the container
 WORKDIR /app
